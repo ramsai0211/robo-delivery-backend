@@ -10,42 +10,16 @@ app.use(express.json());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*", // Allow all origins or specify your frontend URL
+    origin: "*", // update for your frontend live URL if strict
   },
 });
 
-// In-memory order storage (replace with DB for production)
+// In-memory orders array (for demo; use a database for production)
 let orders = [];
 
-// WebSocket connection
-io.on("connection", (socket) => {
-  console.log("Client connected:", socket.id);
-
-  socket.on("subscribeToOrder", (orderId) => {
-    socket.join(orderId);
-    console.log(`Client subscribed to order ${orderId}`);
-  });
-});
-
-// Helper function to emit order status via WebSocket
-function emitOrderStatus(order) {
-  io.to(order.id.toString()).emit("orderStatusUpdate", order);
-}
-
-// REST API Endpoints
-
-// Place a new order
-app.post("/orders", (req, res) => {
-  const order = {
-    id: Date.now().toString(),
-    status: "ORDERED",
-    items: req.body.items || [],
-    location: req.body.location || "",
-    otp: Math.floor(100000 + Math.random() * 900000).toString(), // generate 6-digit OTP
-  };
-  orders.push(order);
-  emitOrderStatus(order);
-  res.status(201).json(order);
+// Root endpoint (shows API is running)
+app.get("/", (req, res) => {
+  res.send("Robo Delivery Backend is Running!");
 });
 
 // Get all orders
@@ -53,29 +27,114 @@ app.get("/orders", (req, res) => {
   res.json(orders);
 });
 
-// Update order status
-app.post("/orders/:id/status", (req, res) => {
-  const order = orders.find((o) => o.id === req.params.id);
-  if (!order) return res.status(404).json({ error: "Order not found" });
+// Create a new order
+app.post("/orders", (req, res) => {
+  const { name, location, items, password } = req.body;
+  // Validate required fields
+  if (!name || !location || !Array.isArray(items) || items.length === 0 || !/^d{6}$/.test(password)) {
+    return res.status(400).json({ error: "Missing or invalid order data!" });
+  }
+  const order = {
+    id: Date.now().toString(),
+    status: "ORDERED",
+    name,
+    location,
+    items,
+    password,
+    otp: Math.floor(100000 + Math.random() * 900000).toString() // Generate 6-digit OTP
+  };
+  orders.push(order);
+  emitOrderStatus(order);
+  res.status(201).json(order);
+});
 
+// Change order status (generic)
+app.post("/orders/:id/status", (req, res) => {
+  const order = orders.find(o => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: "Order not found" });
   order.status = req.body.status || order.status;
   emitOrderStatus(order);
   res.json(order);
 });
 
-// Example: Other specific status endpoints for clarity
-app.post("/orders/:id/dispatch", (req, res) => {
-  const order = orders.find((o) => o.id === req.params.id);
+// Shopkeeper actions
+app.post("/orders/:id/open-box", (req, res) => {
+  const order = orders.find(o => o.id === req.params.id);
   if (!order) return res.status(404).json({ error: "Order not found" });
-
+  order.status = "OPENED";
+  emitOrderStatus(order);
+  res.json(order);
+});
+app.post("/orders/:id/close-box", (req, res) => {
+  const order = orders.find(o => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  order.status = "PACKED";
+  emitOrderStatus(order);
+  res.json(order);
+});
+app.post("/orders/:id/dispatch", (req, res) => {
+  const order = orders.find(o => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: "Order not found" });
   order.status = "DISPATCHED";
   emitOrderStatus(order);
   res.json(order);
 });
+app.post("/orders/:id/arrived", (req, res) => {
+  const order = orders.find(o => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  order.status = "ARRIVED_AT_CUSTOMER";
+  emitOrderStatus(order);
+  res.json(order);
+});
+app.post("/orders/:id/password-verified", (req, res) => {
+  const order = orders.find(o => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  order.status = "PASSWORD_VERIFIED";
+  emitOrderStatus(order);
+  res.json(order);
+});
+app.post("/orders/:id/otp-verified", (req, res) => {
+  const order = orders.find(o => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  order.status = "OTP_VERIFIED";
+  emitOrderStatus(order);
+  res.json(order);
+});
+app.post("/orders/:id/delivered", (req, res) => {
+  const order = orders.find(o => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  order.status = "DELIVERY_COMPLETED";
+  emitOrderStatus(order);
+  res.json(order);
+});
 
-// You can add similar endpoints for open-box, close-box, arrived, password-verified, otp-verified, delivered, theft-alert, etc.
+// Anti-theft status updates
+app.post("/orders/:id/theft-alert", (req, res) => {
+  const order = orders.find(o => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  order.status = "THEFT_ALERT";
+  emitOrderStatus(order);
+  res.json(order);
+});
+app.post("/orders/:id/theft-resolved", (req, res) => {
+  const order = orders.find(o => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  order.status = "THEFT_RESOLVED";
+  emitOrderStatus(order);
+  res.json(order);
+});
 
-// Start server
+// WebSocket: status push future support
+io.on("connection", (socket) => {
+  socket.on("subscribeToOrder", (orderId) => {
+    socket.join(orderId);
+  });
+});
+function emitOrderStatus(order) {
+  io.to(order.id).emit("orderStatusUpdate", order);
+}
+
+// Listen on correct port (Railway sets process.env.PORT)
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
