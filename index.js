@@ -17,6 +17,7 @@ let anti_theft = false;
 let delivered = false;
 let fake_location = null;
 let order_items = [];
+let customer_name = null;
 
 // --- Polling endpoint used by all clients (robot + web UIs) ---
 app.get('/api/status', (req, res) => {
@@ -24,6 +25,7 @@ app.get('/api/status', (req, res) => {
     status_code,
     status_message,
     order_items,
+    customer_name,
     boxLocked,
     anti_theft,
     delivered,
@@ -34,12 +36,13 @@ app.get('/api/status', (req, res) => {
 
 // --- Customer places order ---
 app.post('/api/order', (req, res) => {
+  customer_name = req.body.name || "";
   order = req.body;
   order_items = order.items || [];
   password = order.password; // six digit password string
   fake_location = order.fake_location;
   status_code = "ORDERED";
-  status_message = "Order received and packing in progress.";
+  status_message = `Order received from ${customer_name}. Packing in progress.`;
   boxLocked = true;
   delivered = false;
   otp = String(Math.floor(100000 + Math.random() * 900000));
@@ -127,6 +130,7 @@ app.post('/api/admin-reset', (req, res) => {
   anti_theft = false;
   delivered = false;
   fake_location = null;
+  customer_name = null;
   status_code = "NO_ORDER";
   status_message = "System reset. Ready for new orders.";
   res.json({ ok: true, status_code });
